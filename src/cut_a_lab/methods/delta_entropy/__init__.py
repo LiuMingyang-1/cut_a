@@ -1,0 +1,1 @@
+"""Delta entropy method package."""

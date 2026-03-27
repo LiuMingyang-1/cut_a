@@ -1,0 +1,16 @@
+{
+  "output_path": "/root/autodl-tmp/trajectory/cuts/data/combined/tokenizer_windows_mean.jsonl",
+  "pooling": "mean",
+  "dataset_name": "tokenizer_windows",
+  "span_labels_path": "/root/autodl-tmp/trajectory/icr_probe_repro/data/span_labels/tokenizer_windows_silver_labels.jsonl",
+  "icr_path": "/root/autodl-tmp/trajectory/icr_probe_repro/data/input/icr_halu_eval_random_qwen2.5.jsonl",
+  "entropy_path": "/root/autodl-tmp/trajectory/cuts/data/entropy/entropy_scores.jsonl",
+  "n_icr_records": 10000,
+  "n_entropy_records": 10000,
+  "n_merged_records": 10000,
+  "n_span_rows": 80450,
+  "n_combined_rows": 80450,
+  "n_missing_sample_ids": 0,
+  "missing_sample_ids": [],
+  "status": "ok"
+}

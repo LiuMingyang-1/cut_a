@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+
+outputs/
+
+# Keep the small smoke dataset in git, but exclude the full prepared dataset.
+data/combined/*.jsonl
