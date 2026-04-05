@@ -33,12 +33,56 @@ TORCH_PATIENCE = 8
 TORCH_WEIGHT_DECAY = 1e-4
 
 
+def _resolve_torch_device(device: str) -> str:
+    if device != "auto":
+        return device
+    torch = require_torch()
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def _check_binary_training_labels(train_labels: np.ndarray, *, model_name: str, fold_id: int) -> None:
     unique_labels = np.unique(train_labels)
     if unique_labels.size < 2:
         raise ValueError(
             f"{model_name} fold {fold_id + 1} has only one training class in silver labels: {unique_labels.tolist()}"
         )
+
+
+def _summarize_label_distribution(labels: np.ndarray) -> dict[str, int]:
+    values, counts = np.unique(labels, return_counts=True)
+    return {str(int(value)): int(count) for value, count in zip(values, counts)}
+
+
+def _build_skipped_metrics_payload(
+    *,
+    family_name: str,
+    feature_set_name: str,
+    model_name: str,
+    method_names: tuple[str, ...],
+    feature_names: list[str],
+    records: tuple[SpanRecord, ...],
+    silver_labels: np.ndarray,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "family": family_name,
+        "feature_set": feature_set_name,
+        "model": model_name,
+        "methods": list(method_names),
+        "feature_names": feature_names,
+        "feature_dim": len(feature_names),
+        "n_rows": len(records),
+        "n_labeled_rows": int((silver_labels >= 0).sum()),
+        "status": "skipped",
+        "skip_reason": reason,
+        "label_distribution": _summarize_label_distribution(silver_labels[silver_labels >= 0]),
+        "span_level": {},
+        "sample_level": {},
+    }
 
 
 def _prediction_probability(model: Any, features: np.ndarray) -> np.ndarray:
@@ -209,13 +253,49 @@ def train_with_features(
     use_torch = family_name == "torch"
     if use_torch:
         torch = require_torch()
+        device = _resolve_torch_device(device)
         torch.manual_seed(seed)
 
     folds = build_group_folds(sample_ids, sample_labels, n_splits=n_splits, seed=seed)
     results: dict[str, dict[str, Any]] = {}
+    labeled_mask = silver_labels >= 0
+    labeled_values = silver_labels[labeled_mask]
+    has_two_labeled_classes = np.unique(labeled_values).size >= 2 if labeled_values.size else False
 
     for model_name, model_factory in model_factories.items():
         print(f"\n[{feature_set_name}] Training {family_name}/{model_name}")
+        if not has_two_labeled_classes:
+            metrics_payload = _build_skipped_metrics_payload(
+                family_name=family_name,
+                feature_set_name=feature_set_name,
+                model_name=model_name,
+                method_names=method_names,
+                feature_names=feature_names,
+                records=records,
+                silver_labels=silver_labels,
+                reason="Need at least two labeled classes to train.",
+            )
+            dump_json(output_dir / f"{model_name}.metrics.json", metrics_payload)
+            write_jsonl(
+                output_dir / f"{model_name}.oof_predictions.jsonl",
+                [
+                    record.to_prediction_row(
+                        feature_set=feature_set_name,
+                        family=family_name,
+                        model=model_name,
+                        fold=-1,
+                        probability=None,
+                    )
+                    for record in records
+                ],
+            )
+            results[model_name] = metrics_payload
+            print(
+                f"Skipping {feature_set_name} / {family_name} / {model_name}: "
+                f"{metrics_payload['skip_reason']} labels={metrics_payload['label_distribution']}"
+            )
+            continue
+
         probabilities = np.full(len(records), np.nan, dtype=np.float32)
         fold_assignments = np.full(len(records), -1, dtype=np.int32)
         span_metrics: list[dict[str, float]] = []
@@ -323,16 +403,51 @@ def train_with_features(
     return results
 
 
+def _write_feature_bundle_artifacts(
+    *,
+    output_dir: Path,
+    feature_set_name: str,
+    method_names: tuple[str, ...],
+    records: tuple[SpanRecord, ...],
+    features: np.ndarray,
+    feature_names: list[str],
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        output_dir / "feature_bundle.npz",
+        features=np.asarray(features, dtype=np.float32),
+        sample_labels=np.asarray([record.sample_label for record in records], dtype=np.int32),
+        silver_labels=np.asarray(
+            [-1 if record.silver_label is None else int(record.silver_label) for record in records],
+            dtype=np.int32,
+        ),
+    )
+    dump_json(
+        output_dir / "feature_bundle.json",
+        {
+            "feature_set": feature_set_name,
+            "methods": list(method_names),
+            "n_rows": len(records),
+            "feature_dim": len(feature_names),
+            "feature_names": feature_names,
+            "sample_ids": [record.sample_id for record in records],
+            "span_ids": [record.span_id for record in records],
+        },
+    )
+
+
 def run_recipe(
     *,
     recipe: RecipeSpec,
     method_inputs: dict[str, Path],
     output_dir: Path,
     device: str = "cpu",
+    family_groups: tuple[str, ...] = ("sklearn", "torch"),
 ) -> dict[str, Any]:
     """Run a recipe end to end and return the training summary."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    device = _resolve_torch_device(device) if "torch" in family_groups else device
 
     loaded_blocks: dict[str, FeatureBlock] = {}
     resolved_inputs: dict[str, str] = {}
@@ -358,38 +473,66 @@ def run_recipe(
             [loaded_blocks[method_name] for method_name in feature_set.methods]
         )
         feature_dir = output_dir / feature_set.name
+        _write_feature_bundle_artifacts(
+            output_dir=feature_dir,
+            feature_set_name=feature_set.name,
+            method_names=feature_set.methods,
+            records=records,
+            features=features,
+            feature_names=feature_names,
+        )
 
-        sklearn_results = train_with_features(
-            feature_set_name=feature_set.name,
-            method_names=feature_set.methods,
-            features=features,
-            feature_names=feature_names,
-            records=records,
-            model_factories=build_sklearn_model_factories(seed=42),
-            output_dir=feature_dir / "sklearn",
-            family_name="sklearn",
-            n_splits=5,
-            seed=42,
-            device=device,
-        )
-        torch_results = train_with_features(
-            feature_set_name=feature_set.name,
-            method_names=feature_set.methods,
-            features=features,
-            feature_names=feature_names,
-            records=records,
-            model_factories=build_torch_model_factories(),
-            output_dir=feature_dir / "torch",
-            family_name="torch",
-            n_splits=5,
-            seed=42,
-            device=device,
-        )
+        sklearn_results: dict[str, dict[str, Any]] = {}
+        if "sklearn" in family_groups:
+            sklearn_results = train_with_features(
+                feature_set_name=feature_set.name,
+                method_names=feature_set.methods,
+                features=features,
+                feature_names=feature_names,
+                records=records,
+                model_factories=build_sklearn_model_factories(seed=42),
+                output_dir=feature_dir / "sklearn",
+                family_name="sklearn",
+                n_splits=5,
+                seed=42,
+                device=device,
+            )
+        torch_results: dict[str, dict[str, Any]] = {}
+        if "torch" in family_groups:
+            torch_results = train_with_features(
+                feature_set_name=feature_set.name,
+                method_names=feature_set.methods,
+                features=features,
+                feature_names=feature_names,
+                records=records,
+                model_factories=build_torch_model_factories(),
+                output_dir=feature_dir / "torch",
+                family_name="torch",
+                n_splits=5,
+                seed=42,
+                device=device,
+            )
 
         all_results[feature_set.name] = {"sklearn": sklearn_results, "torch": torch_results}
 
         for family_group, model_group in (("sklearn", sklearn_results), ("torch", torch_results)):
             for model_name, metrics in model_group.items():
+                if metrics.get("status") == "skipped":
+                    comparison_rows.append(
+                        {
+                            "feature_set": feature_set.name,
+                            "family_group": family_group,
+                            "model": model_name,
+                            "methods": list(feature_set.methods),
+                            "span_auroc": None,
+                            "sample_auroc": None,
+                            "sample_auprc": None,
+                            "sample_f1": None,
+                            "status": "skipped",
+                            "skip_reason": metrics.get("skip_reason"),
+                        }
+                    )
+                    continue
                 comparison_rows.append(
                     {
                         "feature_set": feature_set.name,
@@ -407,13 +550,20 @@ def run_recipe(
     print("\nRecipe comparison table")
     print(comparison_table)
 
-    best_row = max(
-        comparison_rows,
-        key=lambda row: (
-            float("-inf") if row["sample_auroc"] is None else float(row["sample_auroc"]),
-            float("-inf") if row["span_auroc"] is None else float(row["span_auroc"]),
-        ),
-    )
+    best_row = None
+    comparable_rows = [
+        row
+        for row in comparison_rows
+        if row.get("sample_auroc") is not None or row.get("span_auroc") is not None
+    ]
+    if comparable_rows:
+        best_row = max(
+            comparable_rows,
+            key=lambda row: (
+                float("-inf") if row["sample_auroc"] is None else float(row["sample_auroc"]),
+                float("-inf") if row["span_auroc"] is None else float(row["span_auroc"]),
+            ),
+        )
 
     summary = {
         "recipe": recipe.name,
