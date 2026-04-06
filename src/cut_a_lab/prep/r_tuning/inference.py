@@ -311,9 +311,14 @@ def build_inference_cache(
     num_hidden_layers = int(getattr(model.config, "num_hidden_layers", 1) or 1)
     placeholder_layer_count = max(2, num_hidden_layers + 1)
 
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = None
+
     batches = [samples[i: i + batch_size] for i in range(0, len(samples), batch_size)]
-    for batch_idx, batch in enumerate(batches):
-        print(f"  [{batch_idx * batch_size + 1}-{min((batch_idx + 1) * batch_size, len(samples))}/{len(samples)}]")
+    iterator = tqdm(batches, desc="inference", unit="batch", total=len(batches)) if tqdm else batches
+    for batch in iterator:
         batch_results = _generate_batch_with_hidden_cache(
             model=model,
             tokenizer=tokenizer,
