@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--model-name-or-path", required=True)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--max-new-tokens", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument(
         "--max-samples",
         type=int,
@@ -56,6 +57,7 @@ def main() -> None:
         model_name_or_path=args.model_name_or_path,
         device=args.device,
         max_new_tokens=args.max_new_tokens,
+        batch_size=args.batch_size,
     )
 
     selected_datasets = set(args.dataset)
