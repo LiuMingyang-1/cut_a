@@ -96,6 +96,7 @@ def _apply_final_norm(hidden: Any, final_norm: Any | None) -> Any:
 def _compute_entropy_from_logits(logits: Any) -> float:
     import torch
 
+    logits = logits.to(dtype=torch.float32)
     log_probs = torch.log_softmax(logits, dim=-1)
     probs = torch.exp(log_probs)
     entropy = -(probs * log_probs).sum(dim=-1)
@@ -187,8 +188,8 @@ def _generate_with_hidden_cache(
         answer_hidden = hidden[:, answer_slice, :]
         if answer_hidden.shape[1] == 0:
             continue
-        answer_hidden = answer_hidden.to(dtype=torch.float32)
-        layer_means.append(answer_hidden.mean(dim=1).squeeze(0).cpu().numpy().astype(np.float32))
+        # Keep model dtype for norm + logits computation; cast to float32 only for numpy storage
+        layer_means.append(answer_hidden.mean(dim=1).squeeze(0).to(dtype=torch.float32).cpu().numpy().astype(np.float32))
 
         normalized = _apply_final_norm(answer_hidden, final_norm)
         logits = output_embeddings(normalized)
