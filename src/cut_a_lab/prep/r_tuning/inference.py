@@ -116,9 +116,7 @@ class ModelRunnerConfig:
 
 def _load_model_and_tokenizer(config: ModelRunnerConfig) -> tuple[Any, Any, str]:
     transformers = require_transformers()
-    import torch
 
-    resolved_device = _resolve_torch_device(config.device)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         config.model_name_or_path,
         trust_remote_code=config.trust_remote_code,
@@ -129,10 +127,11 @@ def _load_model_and_tokenizer(config: ModelRunnerConfig) -> tuple[Any, Any, str]
     model = transformers.AutoModelForCausalLM.from_pretrained(
         config.model_name_or_path,
         trust_remote_code=config.trust_remote_code,
-        torch_dtype=torch.float16 if resolved_device in {"cuda", "mps"} else torch.float32,
+        torch_dtype="auto",
+        device_map="auto",
     )
-    model.to(resolved_device)
     model.eval()
+    resolved_device = str(next(model.parameters()).device)
     return model, tokenizer, resolved_device
 
 

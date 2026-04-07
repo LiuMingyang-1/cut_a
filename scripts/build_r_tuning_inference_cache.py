@@ -28,7 +28,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=Path("data/R-Tuning-data"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/r_tuning/inference"))
-    parser.add_argument("--model-name-or-path", required=True)
+    parser.add_argument(
+        "--model-name-or-path",
+        default="/root/autodl-tmp/hf/models/LLM-Research/Meta-Llama-3.1-8B-Instruct",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--batch-size", type=int, default=8)
