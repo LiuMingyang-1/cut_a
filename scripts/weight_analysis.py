@@ -62,6 +62,12 @@ def auroc(y, s):
     return float(roc_auc_score(y, s)) if len(np.unique(y)) > 1 else float("nan")
 
 
+def _json_default(value):
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 # ── Logistic Regression weights ────────────────────────────────────────────────
 print("=" * 60)
 print("LR coefficient analysis")
@@ -101,7 +107,7 @@ for name, Xtr, Xte_id, Xte_od, n_layers in [
     print(f"  Final layer share of total |coef|: {final_share:.1%}")
 
     results[name] = {"coef": coef.tolist(), "abs_coef": abs_coef.tolist(),
-                     "final_share": final_share, "id_auc": id_auc, "od_auc": od_auc}
+                     "final_share": float(final_share), "id_auc": id_auc, "od_auc": od_auc}
 
 
 # ── MLP weight analysis ────────────────────────────────────────────────────────
@@ -144,7 +150,7 @@ for name, Xtr, Xte_id, Xte_od, n_layers in [
     print(f"  Final layer share of total W1 L2 norm: {final_share:.1%}")
 
     mlp_results[name] = {"layer_importance": layer_importance.tolist(),
-                         "final_share": final_share, "id_auc": id_auc, "od_auc": od_auc}
+                         "final_share": float(final_share), "id_auc": id_auc, "od_auc": od_auc}
 
 
 # ── Plot ───────────────────────────────────────────────────────────────────────
@@ -200,4 +206,4 @@ fig.savefig(OUT / "weight_analysis.png", bbox_inches="tight", dpi=150)
 print(f"\nFigure saved to {OUT}/weight_analysis.png")
 
 with open(OUT / "weight_analysis.json", "w") as f:
-    json.dump({"lr": results, "mlp": mlp_results}, f, indent=2)
+    json.dump({"lr": results, "mlp": mlp_results}, f, indent=2, default=_json_default)

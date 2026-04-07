@@ -41,10 +41,14 @@ _results = _args.results_dir
 OUT = _args.output_dir or (_results / "figures")
 OUT.mkdir(parents=True, exist_ok=True)
 
-d1 = json.load(open(_results / "exp1_layer_ablation_tf.json"))
-d2 = json.load(open(_results / "exp2_ece_comparison.json"))
-d3 = json.load(open(_results / "exp3_combination.json"))
-d4 = json.load(open(_results / "exp4_supervised_layer_ablation.json"))
+with (_results / "exp1_layer_ablation_tf.json").open("r", encoding="utf-8") as f:
+    d1 = json.load(f)
+with (_results / "exp2_ece_comparison.json").open("r", encoding="utf-8") as f:
+    d2 = json.load(f)
+with (_results / "exp3_combination.json").open("r", encoding="utf-8") as f:
+    d3 = json.load(f)
+with (_results / "exp4_supervised_layer_ablation.json").open("r", encoding="utf-8") as f:
+    d4 = json.load(f)
 
 COLORS = {"id": "#2563eb", "ood": "#dc2626", "tf": "#16a34a", "sup": "#9333ea"}
 ALPHA_LINE = 0.85
@@ -52,29 +56,41 @@ ALPHA_LINE = 0.85
 # ─── Figure 1: Layer AUROC curves (core paper figure) ─────────────────────────
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharey=False)
 
-for ax, key, title, n_layers in [
-    (axes[0], "icr", "ICR (Cosine Distance)", 28),
-    (axes[1], "entropy", "Entropy (Logit Lens)", 29),
+for ax, key, title in [
+    (axes[0], "icr", "ICR (Cosine Distance)"),
+    (axes[1], "entropy", "Entropy (Logit Lens)"),
 ]:
     rows = d1[key]
+    if not rows:
+        raise ValueError(f"No rows found for {key!r} in exp1_layer_ablation_tf.json")
+
     layers = [r["layer"] for r in rows]
     id_auc = [r["id_auroc"] for r in rows]
     ood_auc = [r["ood_auroc"] for r in rows]
+    final_layer = layers[-1]
+    first_layer = min(layers)
 
     # All layers as scatter, final layer highlighted
-    ax.plot(layers[:-1], id_auc[:-1], "o-", color=COLORS["id"], alpha=ALPHA_LINE,
-            linewidth=1.5, markersize=4, label="ID test")
-    ax.plot(layers[:-1], ood_auc[:-1], "s-", color=COLORS["ood"], alpha=ALPHA_LINE,
-            linewidth=1.5, markersize=4, label="OOD test")
+    if len(layers) >= 2:
+        ax.plot(layers[:-1], id_auc[:-1], "o-", color=COLORS["id"], alpha=ALPHA_LINE,
+                linewidth=1.5, markersize=4, label="ID test")
+        ax.plot(layers[:-1], ood_auc[:-1], "s-", color=COLORS["ood"], alpha=ALPHA_LINE,
+                linewidth=1.5, markersize=4, label="OOD test")
 
-    # Final layer as star, connected with dashed line
-    ax.plot([layers[-2], layers[-1]], [id_auc[-2], id_auc[-1]], "--",
-            color=COLORS["id"], alpha=0.5, linewidth=1)
-    ax.plot([layers[-2], layers[-1]], [ood_auc[-2], ood_auc[-1]], "--",
-            color=COLORS["ood"], alpha=0.5, linewidth=1)
-    ax.plot(layers[-1], id_auc[-1], "*", color=COLORS["id"], markersize=14,
+        # Final layer as star, connected with dashed line.
+        ax.plot([layers[-2], layers[-1]], [id_auc[-2], id_auc[-1]], "--",
+                color=COLORS["id"], alpha=0.5, linewidth=1)
+        ax.plot([layers[-2], layers[-1]], [ood_auc[-2], ood_auc[-1]], "--",
+                color=COLORS["ood"], alpha=0.5, linewidth=1)
+    else:
+        ax.plot(layers, id_auc, "o", color=COLORS["id"], alpha=ALPHA_LINE,
+                markersize=4, label="ID test")
+        ax.plot(layers, ood_auc, "s", color=COLORS["ood"], alpha=ALPHA_LINE,
+                markersize=4, label="OOD test")
+
+    ax.plot(final_layer, id_auc[-1], "*", color=COLORS["id"], markersize=14,
             zorder=5, label=f"Final layer (ID={id_auc[-1]:.3f})")
-    ax.plot(layers[-1], ood_auc[-1], "*", color=COLORS["ood"], markersize=14,
+    ax.plot(final_layer, ood_auc[-1], "*", color=COLORS["ood"], markersize=14,
             zorder=5, label=f"Final layer (OOD={ood_auc[-1]:.3f})")
 
     ax.axhline(0.5, color="gray", linestyle=":", linewidth=1, alpha=0.6, label="Chance")
@@ -83,13 +99,14 @@ for ax, key, title, n_layers in [
     ax.set_title(title, fontsize=13, fontweight="bold")
     ax.legend(fontsize=9, loc="upper left")
     ax.set_ylim(0.32, 0.80)
-    ax.set_xlim(-0.5, n_layers - 0.5)
+    ax.set_xlim(first_layer - 0.5, final_layer + 0.5)
     ax.grid(True, alpha=0.3)
 
     # Shade non-final region
-    ax.axvspan(-0.5, n_layers - 1.5, color="gray", alpha=0.04)
-    ax.axvspan(n_layers - 1.5, n_layers - 0.5, color="gold", alpha=0.12)
-    ax.text(n_layers - 1, 0.34, "Final\nlayer", ha="center", fontsize=8, color="#92400e")
+    if final_layer > first_layer:
+        ax.axvspan(first_layer - 0.5, final_layer - 0.5, color="gray", alpha=0.04)
+    ax.axvspan(final_layer - 0.5, final_layer + 0.5, color="gold", alpha=0.12)
+    ax.text(final_layer, 0.34, "Final\nlayer", ha="center", fontsize=8, color="#92400e")
 
 fig.suptitle("Training-Free AUROC by Layer: Final Layer is Uniquely Informative",
              fontsize=14, fontweight="bold", y=1.02)

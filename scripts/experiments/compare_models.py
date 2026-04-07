@@ -40,39 +40,50 @@ COLORS = {"id": "#2563eb", "ood": "#dc2626"}
 
 
 def load_exp1(results_dir: Path) -> dict:
-    return json.load(open(results_dir / "exp1_layer_ablation_tf.json"))
+    with (results_dir / "exp1_layer_ablation_tf.json").open("r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def load_exp2(results_dir: Path) -> list:
-    return json.load(open(results_dir / "exp2_ece_comparison.json"))
+    with (results_dir / "exp2_ece_comparison.json").open("r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def plot_layer_curves(ax, rows: list[dict], title: str, show_ylabel: bool = True) -> None:
+    if not rows:
+        raise ValueError(f"{title}: no layer rows found.")
+
     layers = [r["layer"] for r in rows]
     id_auc = [r["id_auroc"] for r in rows]
     ood_auc = [r["ood_auroc"] for r in rows]
-    n = len(layers)
+    final_layer = layers[-1]
 
-    ax.plot(layers[:-1], id_auc[:-1], "o-", color=COLORS["id"], alpha=0.8,
-            linewidth=1.5, markersize=3.5, label="ID test")
-    ax.plot(layers[:-1], ood_auc[:-1], "s-", color=COLORS["ood"], alpha=0.8,
-            linewidth=1.5, markersize=3.5, label="OOD test")
-    # dashed connector to final layer
-    ax.plot([layers[-2], layers[-1]], [id_auc[-2], id_auc[-1]], "--",
-            color=COLORS["id"], alpha=0.4, linewidth=1)
-    ax.plot([layers[-2], layers[-1]], [ood_auc[-2], ood_auc[-1]], "--",
-            color=COLORS["ood"], alpha=0.4, linewidth=1)
-    ax.plot(layers[-1], id_auc[-1], "*", color=COLORS["id"], markersize=13, zorder=5)
-    ax.plot(layers[-1], ood_auc[-1], "*", color=COLORS["ood"], markersize=13, zorder=5)
+    if len(layers) >= 2:
+        ax.plot(layers[:-1], id_auc[:-1], "o-", color=COLORS["id"], alpha=0.8,
+                linewidth=1.5, markersize=3.5, label="ID test")
+        ax.plot(layers[:-1], ood_auc[:-1], "s-", color=COLORS["ood"], alpha=0.8,
+                linewidth=1.5, markersize=3.5, label="OOD test")
+        # Dashed connector to final layer.
+        ax.plot([layers[-2], layers[-1]], [id_auc[-2], id_auc[-1]], "--",
+                color=COLORS["id"], alpha=0.4, linewidth=1)
+        ax.plot([layers[-2], layers[-1]], [ood_auc[-2], ood_auc[-1]], "--",
+                color=COLORS["ood"], alpha=0.4, linewidth=1)
+    else:
+        ax.plot(layers, id_auc, "o", color=COLORS["id"], alpha=0.8, markersize=4, label="ID test")
+        ax.plot(layers, ood_auc, "s", color=COLORS["ood"], alpha=0.8, markersize=4, label="OOD test")
+
+    ax.plot(final_layer, id_auc[-1], "*", color=COLORS["id"], markersize=13, zorder=5)
+    ax.plot(final_layer, ood_auc[-1], "*", color=COLORS["ood"], markersize=13, zorder=5)
 
     ax.axhline(0.5, color="gray", linestyle=":", linewidth=1, alpha=0.5)
-    ax.axvspan(n - 1.5, n - 0.5, color="gold", alpha=0.15)
+    ax.axvspan(final_layer - 0.5, final_layer + 0.5, color="gold", alpha=0.15)
     ax.set_xlabel("Layer index", fontsize=10)
     if show_ylabel:
         ax.set_ylabel("AUROC", fontsize=10)
     ax.set_title(title, fontsize=10, fontweight="bold")
     ax.legend(fontsize=8)
     ax.set_ylim(0.30, 0.82)
+    ax.set_xlim(min(layers) - 0.5, final_layer + 0.5)
     ax.grid(True, alpha=0.3)
 
 
