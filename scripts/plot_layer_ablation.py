@@ -1,7 +1,15 @@
-"""Generate figures for the layer ablation paper analysis."""
+"""Generate figures for the layer ablation paper analysis.
+
+Usage:
+    uv run python scripts/plot_layer_ablation.py  # uses defaults
+    uv run python scripts/plot_layer_ablation.py \\
+        --results-dir outputs/experiments/llama-3.1-8b-instruct/layer_ablation \\
+        --output-dir outputs/experiments/llama-3.1-8b-instruct/layer_ablation/figures
+"""
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -11,13 +19,32 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
 
-OUT = Path("outputs/pararel_experiment/layer_ablation/figures")
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("outputs/pararel_experiment/layer_ablation"),
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Defaults to <results-dir>/figures/",
+    )
+    return parser.parse_args()
+
+
+_args = _parse_args()
+_results = _args.results_dir
+OUT = _args.output_dir or (_results / "figures")
 OUT.mkdir(parents=True, exist_ok=True)
 
-d1 = json.load(open("outputs/pararel_experiment/layer_ablation/exp1_layer_ablation_tf.json"))
-d2 = json.load(open("outputs/pararel_experiment/layer_ablation/exp2_ece_comparison.json"))
-d3 = json.load(open("outputs/pararel_experiment/layer_ablation/exp3_combination.json"))
-d4 = json.load(open("outputs/pararel_experiment/layer_ablation/exp4_supervised_layer_ablation.json"))
+d1 = json.load(open(_results / "exp1_layer_ablation_tf.json"))
+d2 = json.load(open(_results / "exp2_ece_comparison.json"))
+d3 = json.load(open(_results / "exp3_combination.json"))
+d4 = json.load(open(_results / "exp4_supervised_layer_ablation.json"))
 
 COLORS = {"id": "#2563eb", "ood": "#dc2626", "tf": "#16a34a", "sup": "#9333ea"}
 ALPHA_LINE = 0.85

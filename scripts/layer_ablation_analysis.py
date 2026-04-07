@@ -6,22 +6,44 @@ Experiments:
   3. Training-free combination (ICR final + Ent final weighted search)
   4. Supervised single-layer LR ablation (id vs ood per layer)
 
-All data from: outputs/pararel_experiment/normalized_features.npz
-Output: outputs/pararel_experiment/layer_ablation/
+Usage:
+    uv run python scripts/layer_ablation_analysis.py  # uses defaults
+    uv run python scripts/layer_ablation_analysis.py \\
+        --features-path outputs/experiments/llama-3.1-8b-instruct/normalized_features.npz \\
+        --output-dir outputs/experiments/llama-3.1-8b-instruct/layer_ablation
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 import numpy as np
 
-OUTPUT_DIR = Path("outputs/pararel_experiment/layer_ablation")
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--features-path",
+        type=Path,
+        default=Path("outputs/pararel_experiment/normalized_features.npz"),
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Defaults to <features-path parent>/layer_ablation/",
+    )
+    return parser.parse_args()
+
+
+args = _parse_args()
+OUTPUT_DIR = args.output_dir or (args.features_path.parent / "layer_ablation")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── load data ─────────────────────────────────────────────────────────────────
-d = np.load("outputs/pararel_experiment/normalized_features.npz")
+d = np.load(args.features_path)
 
 tr_icr = d["tr_icr_raw"]   # (5575, 28)
 tr_ent = d["tr_ent_raw"]   # (5575, 29)

@@ -2,10 +2,17 @@
 
 Trains LR and MLP on all-layer ICR/Entropy features,
 then examines which layer dimensions get the most weight.
+
+Usage:
+    uv run python scripts/weight_analysis.py  # uses defaults
+    uv run python scripts/weight_analysis.py \\
+        --features-path outputs/experiments/llama-3.1-8b-instruct/normalized_features.npz \\
+        --output-dir outputs/experiments/llama-3.1-8b-instruct/weight_analysis
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -14,10 +21,28 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-OUT = Path("outputs/pararel_experiment/weight_analysis")
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--features-path",
+        type=Path,
+        default=Path("outputs/pararel_experiment/normalized_features.npz"),
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Defaults to <features-path parent>/weight_analysis/",
+    )
+    return parser.parse_args()
+
+
+_args = _parse_args()
+OUT = _args.output_dir or (_args.features_path.parent / "weight_analysis")
 OUT.mkdir(parents=True, exist_ok=True)
 
-d = np.load("outputs/pararel_experiment/normalized_features.npz")
+d = np.load(_args.features_path)
 tr_icr = d["tr_icr_raw"]
 tr_ent = d["tr_ent_raw"]
 tr_lbl = d["tr_lbl"]
