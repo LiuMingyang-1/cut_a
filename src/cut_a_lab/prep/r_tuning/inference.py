@@ -300,9 +300,18 @@ def build_inference_cache(
     samples: list[NormalizedSample],
     output_dir: Path,
     config: ModelRunnerConfig,
+    model: Any = None,
+    tokenizer: Any = None,
+    resolved_device: str | None = None,
 ) -> Path:
-    """Run one model over normalized samples and persist a reusable cache."""
-    model, tokenizer, resolved_device = _load_model_and_tokenizer(config)
+    """Run one model over normalized samples and persist a reusable cache.
+
+    If *model*, *tokenizer*, and *resolved_device* are provided they are reused
+    as-is (no reload).  Pass them when calling build_inference_cache in a loop
+    to avoid reloading weights on every iteration.
+    """
+    if model is None or tokenizer is None or resolved_device is None:
+        model, tokenizer, resolved_device = _load_model_and_tokenizer(config)
     records: list[LayerCacheRecord] = []
 
     batch_size = max(1, config.batch_size)

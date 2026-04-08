@@ -8,7 +8,7 @@ from pathlib import Path
 
 from cut_a_lab.core.io import dump_json
 from cut_a_lab.prep.r_tuning.datasets import discover_available_dataset_splits, load_normalized_samples
-from cut_a_lab.prep.r_tuning.inference import ModelRunnerConfig, build_inference_cache
+from cut_a_lab.prep.r_tuning.inference import ModelRunnerConfig, _load_model_and_tokenizer, build_inference_cache
 
 
 def _matches_filters(dataset_name: str, split_name: str, *, datasets: set[str], splits: set[str]) -> bool:
@@ -68,6 +68,8 @@ def main() -> None:
     available = discover_available_dataset_splits(args.data_root)
     summary_rows: list[dict[str, str | int]] = []
 
+    model, tokenizer, resolved_device = _load_model_and_tokenizer(config)
+
     for spec in available:
         if not _matches_filters(spec.dataset_name, spec.split_name, datasets=selected_datasets, splits=selected_splits):
             continue
@@ -75,7 +77,14 @@ def main() -> None:
         if args.max_samples is not None:
             samples = samples[: args.max_samples]
         output_dir = args.output_root / spec.dataset_name / spec.split_name
-        build_inference_cache(samples=samples, output_dir=output_dir, config=config)
+        build_inference_cache(
+            samples=samples,
+            output_dir=output_dir,
+            config=config,
+            model=model,
+            tokenizer=tokenizer,
+            resolved_device=resolved_device,
+        )
         summary_rows.append(
             {
                 "dataset_name": spec.dataset_name,
