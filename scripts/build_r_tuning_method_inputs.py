@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import argparse
 
 from cut_a_lab.core.io import dump_json
 from cut_a_lab.prep.r_tuning.datasets import discover_available_dataset_splits

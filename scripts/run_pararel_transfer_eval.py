@@ -5,8 +5,11 @@ Output root: outputs/pararel_experiment/training/
 
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import argparse
 from typing import Any
 
 from cut_a_lab.core.feature_views import build_feature_set_bundle

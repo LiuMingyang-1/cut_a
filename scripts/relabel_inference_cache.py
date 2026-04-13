@@ -7,10 +7,13 @@ samples.jsonl. Does NOT touch layer_cache.npz (hidden states are unchanged).
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 import argparse
 import json
 import shutil
-from pathlib import Path
 
 from cut_a_lab.prep.r_tuning.contracts import NormalizedSample
 from cut_a_lab.prep.r_tuning.datasets import discover_available_dataset_splits
