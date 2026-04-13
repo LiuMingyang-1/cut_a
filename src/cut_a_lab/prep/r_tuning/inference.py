@@ -33,6 +33,15 @@ def normalize_free_text(value: str) -> str:
     return text.strip()
 
 
+def _extract_first_line(text: str) -> str:
+    """Return the first non-empty line of a (possibly verbose) model output."""
+    for line in str(text).split("\n"):
+        line = line.strip()
+        if line:
+            return line
+    return str(text).strip()
+
+
 def classify_generation(sample: NormalizedSample, generated_text: str) -> tuple[int, int]:
     """Return (sample_label, silver_label) where 1 means hallucinated/incorrect."""
     predicted = str(generated_text).strip()
@@ -43,15 +52,24 @@ def classify_generation(sample: NormalizedSample, generated_text: str) -> tuple[
         expected_label = expected[:1].upper()
         is_wrong = int(predicted_label != expected_label)
     elif sample.task_type == "classification_label":
+        first_line = _extract_first_line(predicted)
         expected_norm = normalize_free_text(expected)
         choices = {normalize_free_text(choice): choice for choice in sample.choices}
-        predicted_norm = normalize_free_text(predicted)
+        predicted_norm = normalize_free_text(first_line)
         if predicted_norm in choices:
             is_wrong = int(predicted_norm != expected_norm)
         else:
             is_wrong = 1
     else:
-        is_wrong = int(normalize_free_text(predicted) != normalize_free_text(expected))
+        first_line = _extract_first_line(predicted)
+        expected_norm = normalize_free_text(expected)
+        predicted_norm = normalize_free_text(first_line)
+        if predicted_norm == expected_norm:
+            is_wrong = 0
+        elif expected_norm and expected_norm in predicted_norm:
+            is_wrong = 0
+        else:
+            is_wrong = 1
 
     return is_wrong, is_wrong
 
