@@ -321,6 +321,7 @@ def build_inference_cache(
     model: Any = None,
     tokenizer: Any = None,
     resolved_device: str | None = None,
+    manifest_extra: dict[str, Any] | None = None,
 ) -> Path:
     """Run one model over normalized samples and persist a reusable cache.
 
@@ -389,5 +390,7 @@ def build_inference_cache(
         "n_samples": len(records),
         "status": "ok",
     }
+    if manifest_extra:
+        manifest.update(manifest_extra)
     write_inference_cache(output_dir=output_dir, records=records, manifest=manifest)
     return Path(output_dir)

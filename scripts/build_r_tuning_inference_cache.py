@@ -1,4 +1,9 @@
-"""Build reusable inference caches for local R-Tuning datasets."""
+"""Build reusable inference caches for local R-Tuning datasets.
+
+Supports both a cheap smoke-test cap (`--max-samples`, head-only) and a
+reproducible random subset before model inference (`--subset-size` or
+`--subset-fraction`).
+"""
 
 from __future__ import annotations
 
@@ -10,7 +15,11 @@ import argparse
 import re
 
 from cut_a_lab.core.io import dump_json
-from cut_a_lab.prep.r_tuning.datasets import discover_available_dataset_splits, load_normalized_samples
+from cut_a_lab.prep.r_tuning.datasets import (
+    discover_available_dataset_splits,
+    load_normalized_samples,
+    subset_normalized_samples,
+)
 from cut_a_lab.prep.r_tuning.inference import ModelRunnerConfig, _load_model_and_tokenizer, build_inference_cache
 
 
@@ -42,7 +51,25 @@ def main() -> None:
         "--max-samples",
         type=int,
         default=None,
-        help="Optional cap per dataset split for smoke testing.",
+        help="Optional head cap per dataset split for smoke testing.",
+    )
+    parser.add_argument(
+        "--subset-size",
+        type=int,
+        default=None,
+        help="Optional random subset size per dataset split, applied before inference.",
+    )
+    parser.add_argument(
+        "--subset-fraction",
+        type=float,
+        default=None,
+        help="Optional random subset fraction per dataset split, applied before inference.",
+    )
+    parser.add_argument(
+        "--subset-seed",
+        type=int,
+        default=0,
+        help="Base seed for reproducible random subset selection.",
     )
     parser.add_argument(
         "--allow-local-7b",
@@ -69,7 +96,7 @@ def main() -> None:
     selected_datasets = set(args.dataset)
     selected_splits = set(args.split)
     available = discover_available_dataset_splits(args.data_root)
-    summary_rows: list[dict[str, str | int]] = []
+    summary_rows: list[dict[str, str | int | float | bool | None]] = []
 
     model, tokenizer, resolved_device = _load_model_and_tokenizer(config)
 
@@ -77,8 +104,19 @@ def main() -> None:
         if not _matches_filters(spec.dataset_name, spec.split_name, datasets=selected_datasets, splits=selected_splits):
             continue
         samples = load_normalized_samples(root_dir=args.data_root, spec=spec)
+        original_sample_count = len(samples)
         if args.max_samples is not None:
             samples = samples[: args.max_samples]
+        pre_subset_count = len(samples)
+        subset_applied = args.subset_size is not None or args.subset_fraction is not None
+        if subset_applied:
+            samples = subset_normalized_samples(
+                samples,
+                subset_size=args.subset_size,
+                subset_fraction=args.subset_fraction,
+                subset_seed=args.subset_seed,
+                subset_namespace=f"{spec.dataset_name}:{spec.split_name}",
+            )
         output_dir = args.output_root / spec.dataset_name / spec.split_name
         build_inference_cache(
             samples=samples,
@@ -87,14 +125,30 @@ def main() -> None:
             model=model,
             tokenizer=tokenizer,
             resolved_device=resolved_device,
+            manifest_extra={
+                "dataset_name": spec.dataset_name,
+                "split_name": spec.split_name,
+                "n_samples_source": original_sample_count,
+                "n_samples_after_head_cap": pre_subset_count,
+                "subset_applied": subset_applied,
+                "subset_size": args.subset_size,
+                "subset_fraction": args.subset_fraction,
+                "subset_seed": args.subset_seed if subset_applied else None,
+            },
         )
         summary_rows.append(
             {
                 "dataset_name": spec.dataset_name,
                 "split_name": spec.split_name,
                 "n_samples": len(samples),
+                "n_samples_source": original_sample_count,
+                "n_samples_after_head_cap": pre_subset_count,
                 "cache_dir": str(output_dir.resolve()),
                 "max_new_tokens": args.max_new_tokens,
+                "subset_applied": subset_applied,
+                "subset_size": args.subset_size,
+                "subset_fraction": args.subset_fraction,
+                "subset_seed": args.subset_seed if subset_applied else None,
             }
         )
         print(f"[cache] {spec.dataset_name}/{spec.split_name}: {len(samples)} samples -> {output_dir}")

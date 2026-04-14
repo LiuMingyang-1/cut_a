@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -261,6 +263,55 @@ def _adapter_for_name(name: str) -> Callable[[Any], list[NormalizedSample]]:
     if name not in ADAPTERS:
         raise KeyError(f"Unknown dataset adapter {name!r}. Available: {', '.join(sorted(ADAPTERS))}")
     return ADAPTERS[name]
+
+
+def _resolve_subset_target_size(
+    total_count: int,
+    *,
+    subset_size: int | None,
+    subset_fraction: float | None,
+) -> int:
+    if subset_size is not None and subset_size <= 0:
+        raise ValueError(f"subset_size must be positive, got {subset_size}")
+    if subset_fraction is not None and not (0.0 < subset_fraction <= 1.0):
+        raise ValueError(f"subset_fraction must satisfy 0 < fraction <= 1, got {subset_fraction}")
+
+    target_size = total_count
+    if subset_fraction is not None:
+        target_size = min(target_size, max(1, int(round(total_count * subset_fraction))))
+    if subset_size is not None:
+        target_size = min(target_size, subset_size)
+    return target_size
+
+
+def _derive_subset_seed(seed: int, namespace: str) -> int:
+    digest = hashlib.sha256(f"{seed}:{namespace}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=False)
+
+
+def subset_normalized_samples(
+    samples: list[NormalizedSample],
+    *,
+    subset_size: int | None = None,
+    subset_fraction: float | None = None,
+    subset_seed: int = 0,
+    subset_namespace: str = "",
+) -> list[NormalizedSample]:
+    """Return a reproducible random subset while preserving original order."""
+    if not samples:
+        return []
+
+    target_size = _resolve_subset_target_size(
+        len(samples),
+        subset_size=subset_size,
+        subset_fraction=subset_fraction,
+    )
+    if target_size >= len(samples):
+        return list(samples)
+
+    rng = random.Random(_derive_subset_seed(subset_seed, subset_namespace))
+    chosen_indices = sorted(rng.sample(range(len(samples)), k=target_size))
+    return [samples[index] for index in chosen_indices]
 
 
 def load_normalized_samples(*, root_dir: Path, spec: DatasetFileSpec) -> list[NormalizedSample]:
